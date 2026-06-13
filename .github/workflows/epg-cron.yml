@@ -1,0 +1,21 @@
+name: EPG Cronjobs
+
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 02:30 UTC → epg.php
+    - cron: '25 3 * * *'   # 03:25 UTC → upload_epg.php
+
+jobs:
+  epg-generate:
+    if: github.event.schedule == '30 2 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: EPG generieren
+        run: curl -s "http://mrxsh.atwebpages.com/epg/epg.php" --max-time 300
+
+  epg-upload:
+    if: github.event.schedule == '25 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: EPG uploaden
+        run: curl -s "http://mrxsh.atwebpages.com/epg/upload_epg.php" --max-time 300
