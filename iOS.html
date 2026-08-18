@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPEG-TS Web Interface v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest/dist/mpegts.js"></script>
+    <style>
+        body { 
+            background-color: #121212; 
+            color: #fff; 
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        h3 { margin: 0 0 10px 0; color: #4caf50; font-size: 16px; }
+        
+        .header {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 12px 18px; /* Etwas größer für Mobile */
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px; /* iOS braucht mind. 16px um Zoom zu verhindern */
+            display: inline-block;
+            text-align: center;
+            -webkit-appearance: none; /* iOS Reset */
+            appearance: none;
+        }
+        .btn:hover { background-color: #444; }
+        .btn.hidden { display: none; }
+        .btn-danger { background-color: #d32f2f; border-color: #b71c1c; }
+        .btn-warning { background-color: #f57c00; border-color: #ef6c00; }
+        .btn-success { background-color: #388e3c; border-color: #2e7d32; }
+        .btn:disabled { background-color: #222; color: #666; cursor: not-allowed; }
+        
+        /* WICHTIG für iOS: Input verstecken, aber klickbar machen */
+        input[type="file"] {
+            position: absolute;
+            left: -9999px;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .main-layout {
+            display: flex;
+            gap: 15px;
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .column {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        
+        .col-genres { flex: 0 0 200px; }
+        .col-streams { flex: 1; }
+        .col-video { flex: 1.5; min-width: 300px; }
+
+        .list-container {
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 45vh;
+            -webkit-overflow-scrolling: touch; /* Sanftes Scrollen auf iOS */
+        }
+        .list-item {
+            background: #333;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.2s;
+            word-break: break-word;
+        }
+        .list-item:hover { background: #555; }
+        .list-item.active { background: #0d6efd; border-color: #0d6efd; }
+
+        video { 
+            width: 100%; 
+            background: #000; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            max-height: 40vh;
+        }
+
+        .video-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #ffc107;
+            min-height: 20px;
+            font-size: 14px;
+        }
+        .info { 
+            margin-top: 10px; 
+            font-size: 12px; 
+            color: #aaa; 
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+        .mac-cache-box {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4caf50;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        @media (max-width: 768px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            .col-genres, .col-streams, .col-video {
+                flex: 1 1 auto;
+                width: 100%;
+            }
+            .col-video {
+                order: -1;
+            }
+            .list-container {
+                max-height: 35vh;
+            }
+            video {
+                max-height: 30vh;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <!-- accept Attribut komplett entfernt, damit iOS die Datei nicht als Playlist öffnet -->
+        <button class="btn" onclick="document.getElementById('m3uInput').click()">1. M3U wählen</button>
+        <input type="file" id="m3uInput">
+        
+        <button class="btn" onclick="document.getElementById('macInput').click()">2. MAC-Datei wählen</button>
+        <input type="file" id="macInput">
+        
+        <button id="loadBtn" class="btn btn-success" onclick="loadSelectedFiles()" disabled>Dateien einlesen</button>
+        
+        <span id="statusInfo" style="color: #aaa; font-size: 13px; margin-left: auto;">Bitte Dateien wählen</span>
+        <button id="exportMacBtn" class="btn hidden" onclick="exportMacHistory()">Mac-Historie</button>
+    </div>
+
+    <div class="main-layout">
+        <div class="column col-genres">
+            <h3>Genres</h3>
+            <div id="genreList" class="list-container">
+                <div class="info">Wähle M3U & MAC und klicke "Einlesen".</div>
+            </div>
+        </div>
+
+        <div class="column col-streams">
+            <h3>Sender</h3>
+            <div id="streamList" class="list-container">
+                <div class="info">Wähle ein Genre...</div>
+            </div>
+        </div>
+
+        <div class="column col-video">
+            <h3>Wiedergabe</h3>
+            
+            <div id="macCacheBox" class="mac-cache-box hidden">
+                Aktive Mac: <span id="currentMacText" style="font-weight:bold; color:#fff;">-</span><br>
+                <span style="font-size:11px; color:#888;">(Wird beibehalten, bis sie manuell gewechselt wird)</span>
+            </div>
+
+            <video id="videoElement" controls autoplay muted playsinline webkit-playsinline></video>
+            
+            <div class="video-controls">
+                <button id="stopBtn" class="btn btn-danger" onclick="stopPlayback()">Stream stoppen</button>
+                <button id="changeMacBtn" class="btn btn-warning hidden" onclick="changeMacAndReload()">Mac wechseln & neu verbinden</button>
+            </div>
+
+            <div id="statusMsg" class="status">Bereit.</div>
+            <div id="streamInfo" class="info"></div>
+        </div>
+    </div>
+
+<script>
+    let player = null;
+    let parsedChannels = {}; 
+    let macAddresses = [];
+    let baseUrl = "";
+    
+    let currentProviderName = "";
+    let currentStreamId = null;
+    let currentStreamName = null;
+    let activeMac = null;
+
+    let selectedM3U = null;
+    let selectedMAC = null;
+
+    // --- DATEI AUSWAHL LOGIK ---
+    document.getElementById('m3uInput').addEventListener('change', (event) => {
+        if (event.target.files.length > 0) {
+            selectedM3U = event.target.files[0];
+            checkFiles();
+        }
+    });
+
+    document.getElementById('macInput').addEventListener('change', (event) => {
+        if (event.target.files.length > 0) {
+            selectedMAC = event.target.files[0];
+            checkFiles();
+        }
+    });
+
+    function checkFiles() {
+        let infoText = [];
+        if (selectedM3U) infoText.push("M3U: " + selectedM3U.name);
+        if (selectedMAC) infoText.push("MAC: " + selectedMAC.name);
+        
+        document.getElementById('statusInfo').innerText = infoText.join(' | ');
+        
+        if (selectedM3U && selectedMAC) {
+            document.getElementById('loadBtn').disabled = false;
+        } else {
+            document.getElementById('loadBtn').disabled = true;
+        }
+    }
+
+    // --- DATEIEN EINLESEN (iOS kompatibel mit FileReader) ---
+    function loadSelectedFiles() {
+        if (!selectedM3U || !selectedMAC) return;
+
+        document.getElementById('statusMsg').innerText = "Lese Dateien ein...";
+        
+        const m3uReader = new FileReader();
+        m3uReader.onload = function(e) {
+            const m3uText = e.target.result;
+            
+            const macReader = new FileReader();
+            macReader.onload = function(e2) {
+                const macText = e2.target.result;
+                processProviderData(m3uText, macText);
+            };
+            macReader.onerror = function() {
+                document.getElementById('statusMsg').innerText = "Fehler beim Lesen der MAC-Datei.";
+            };
+            macReader.readAsText(selectedMAC);
+        };
+        m3uReader.onerror = function() {
+            document.getElementById('statusMsg').innerText = "Fehler beim Lesen der M3U-Datei.";
+        };
+        m3uReader.readAsText(selectedM3U);
+    }
+
+    function processProviderData(m3uText, macText) {
+        try {
+            currentProviderName = selectedM3U.name.replace('.m3u', '').toLowerCase();
+
+            parsedChannels = parseM3U(m3uText);
+            const macData = parseMacFile(macText);
+            
+            baseUrl = macData.baseUrl;
+            macAddresses = macData.macs;
+
+            if (macAddresses.length === 0 || !baseUrl) throw new Error("MAC-Datei Format ungültig oder leer.");
+            
+            activeMac = getOrGenerateMac(currentProviderName);
+            
+            document.getElementById('macCacheBox').classList.remove('hidden');
+            document.getElementById('currentMacText').innerText = activeMac;
+            document.getElementById('changeMacBtn').classList.remove('hidden');
+            document.getElementById('exportMacBtn').classList.remove('hidden');
+            
+            document.getElementById('statusMsg').innerText = `Anbieter geladen. (${macAddresses.length} Macs)`;
+            renderGenres();
+            
+            // iOS Bug Prevention: Input zurücksetzen
+            document.getElementById('m3uInput').value = '';
+            document.getElementById('macInput').value = '';
+            
+        } catch (error) {
+            console.error(error);
+            document.getElementById('statusMsg').innerText = `Fehler: ${error.message}`;
+        }
+    }
+
+    // --- MAC CACHE LOGIK ---
+    function getOrGenerateMac(provider) {
+        let storedMac = localStorage.getItem(`mac_cache_${provider}`);
+        if (storedMac && macAddresses.includes(storedMac)) {
+            return storedMac;
+        }
+        let newMac = macAddresses[Math.floor(Math.random() * macAddresses.length)];
+        localStorage.setItem(`mac_cache_${provider}`, newMac);
+        addMacToHistory(provider, newMac);
+        return newMac;
+    }
+
+    function changeMacAndReload() {
+        if (!macAddresses || macAddresses.length === 0) return;
+        let newMac = macAddresses[Math.floor(Math.random() * macAddresses.length)];
+        localStorage.setItem(`mac_cache_${currentProviderName}`, newMac);
+        activeMac = newMac;
+        addMacToHistory(currentProviderName, newMac);
+
+        document.getElementById('currentMacText').innerText = activeMac;
+        document.getElementById('statusMsg').innerText = "Mac gewechselt. Baue Stream neu auf...";
+
+        if (currentStreamId) {
+            startPlayback(currentStreamId, currentStreamName, null);
+        } else {
+            document.getElementById('statusMsg').innerText = "Mac gewechselt. Bitte Sender starten.";
+        }
+    }
+
+    function addMacToHistory(provider, mac) {
+        let history = JSON.parse(localStorage.getItem('mac_history') || '[]');
+        history.push({ provider: provider, mac: mac, date: new Date().toLocaleString() });
+        localStorage.setItem('mac_history', JSON.stringify(history));
+    }
+
+    function exportMacHistory() {
+        let history = JSON.parse(localStorage.getItem('mac_history') || '[]');
+        if (history.length === 0) {
+            alert("Noch keine Mac-Adressen gewechselt oder generiert.");
+            return;
+        }
+        let text = "Anbieter, Mac-Adresse, Datum/Uhrzeit\n";
+        text += "====================================\n";
+        history.forEach(entry => {
+            text += `${entry.provider}, ${entry.mac}, ${entry.date}\n`;
+        });
+        const blob = new Blob([text], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'mac_history.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // --- LISTEN LOGIK ---
+    function renderGenres() {
+        const container = document.getElementById('genreList');
+        container.innerHTML = '';
+        document.getElementById('streamList').innerHTML = '<div class="info">Wähle ein Genre...</div>';
+        
+        Object.keys(parsedChannels).forEach(genre => {
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerText = genre;
+            div.onclick = () => selectGenre(genre, div);
+            container.appendChild(div);
+        });
+    }
+
+    function selectGenre(genre, element) {
+        document.querySelectorAll('#genreList .list-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        
+        const container = document.getElementById('streamList');
+        container.innerHTML = '';
+        
+        parsedChannels[genre].forEach(ch => {
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerText = ch.name;
+            div.onclick = () => startPlayback(ch.streamId, ch.name, div);
+            container.appendChild(div);
+        });
+    }
+
+    // --- PLAYER LOGIK ---
+    function startPlayback(streamId, name, element) {
+        if (!streamId) return;
+        currentStreamId = streamId;
+        currentStreamName = name;
+
+        if(element) {
+            document.querySelectorAll('#streamList .list-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+        }
+
+        const finalUrl = `${baseUrl}/play/live.php?mac=${activeMac}&stream=${streamId}&extension=ts`;
+        document.getElementById('streamInfo').innerText = `Sender: ${name}\nURL: ${finalUrl}`;
+        document.getElementById('statusMsg').innerText = "Verbinde mit Stream...";
+        playMpegtsStream(finalUrl);
+    }
+
+    function stopPlayback() {
+        if (player) {
+            player.destroy();
+            player = null;
+        }
+        const videoElement = document.getElementById('videoElement');
+        videoElement.removeAttribute('src');
+        videoElement.load();
+        
+        currentStreamId = null;
+        currentStreamName = null;
+        document.querySelectorAll('#streamList .list-item').forEach(el => el.classList.remove('active'));
+        
+        document.getElementById('statusMsg').innerText = "Gestoppt.";
+        document.getElementById('streamInfo').innerText = "";
+    }
+
+    function playMpegtsStream(url) {
+        const videoElement = document.getElementById('videoElement');
+        if (mpegts.getFeatureList().mseLivePlayback) {
+            if (player) player.destroy();
+            
+            player = mpegts.createPlayer({
+                type: 'mse', isLive: true, hasAudio: true, hasVideo: true, url: url
+            }, {
+                enableWorker: true, enableStashBuffer: false, stashInitialSize: 128, autoCleanupSourceBuffer: true
+            });
+            
+            player.attachMediaElement(videoElement);
+            player.load();
+            
+            player.on(mpegts.Events.ERROR, function(errorType, errorDetail, errorInfo) {
+                document.getElementById('statusMsg').innerText = `Stream Fehler: ${errorDetail}`;
+            });
+
+            videoElement.play().catch(err => {
+                console.warn('Autoplay blockiert:', err);
+                document.getElementById('statusMsg').innerText = "Bitte auf das Video klicken, um zu starten.";
+            });
+        } else {
+            document.getElementById('statusMsg').innerText = "Browser unterstützt kein MSE. Versuche nativen Player...";
+            videoElement.src = url;
+            videoElement.play().catch(err => {
+                document.getElementById('statusMsg').innerText = "Wiedergabe fehlgeschlagen: " + err.message;
+            });
+        }
+    }
+
+    // --- PARSING HILFSFUNKTIONEN ---
+    function parseM3U(text) {
+        const lines = text.split('\n');
+        const channels = {};
+        let currentChannel = null;
+        for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('#EXTINF')) {
+                const groupMatch = line.match(/group-title="([^"]+)"/);
+                const nameMatch = line.match(/,(.*)$/);
+                let group = groupMatch ? groupMatch[1] : "Sonstige";
+                let name = nameMatch ? nameMatch[1] : "Unbekannt";
+                currentChannel = { group, name, url: null, streamId: null };
+            } else if (line.startsWith('http') && currentChannel) {
+                currentChannel.url = line;
+                const idMatch = line.match(/_(\d+)$/);
+                if (idMatch) currentChannel.streamId = idMatch[1];
+                if (!channels[currentChannel.group]) channels[currentChannel.group] = [];
+                channels[currentChannel.group].push(currentChannel);
+                currentChannel = null;
+            }
+        }
+        return channels;
+    }
+
+    function parseMacFile(text) {
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        if (lines.length === 0) return { baseUrl: "", macs: [] };
+        let baseUrl = lines[0].trim();
+        if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+        const macs = [];
+        for (let i = 1; i < lines.length; i++) {
+            const macMatch = lines[i].match(/([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/);
+            if (macMatch) macs.push(macMatch[0]);
+        }
+        return { baseUrl, macs };
+    }
+</script>
+
+</body>
+</html>
