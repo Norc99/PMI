@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Player Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/javascript-obfuscator@4.1.1/dist/index.browser.js"></script>
+    <style>
+        body { background-color: #121212; color: #fff; font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { background: #1e1e1e; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); max-width: 600px; width: 100%; text-align: center; }
+        h1 { color: #4caf50; margin-top: 0; }
+        p { color: #aaa; font-size: 14px; line-height: 1.5; }
+        .btn { display: block; background-color: #4caf50; color: #fff; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 15px; width: 100%; box-sizing: border-box; white-space: nowrap; }
+        .btn:hover { background-color: #45a049; }
+        .btn:disabled { background-color: #333; color: #666; cursor: not-allowed; }
+        #dropText { margin-top: 15px; color: #aaa; font-size: 14px; min-height: 20px; }
+        #logArea { background: #000; color: #0f0; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; text-align: left; max-height: 200px; overflow-y: auto; display: none; margin-top: 15px; white-space: pre-wrap; }
+        
+        #vodConfigContainer { display: none; margin-top: 20px; padding: 15px; background: #2a2a2a; border-radius: 6px; text-align: left; }
+        #vodConfigContainer h3 { margin-top: 0; color: #4caf50; font-size: 16px; }
+        .vod-provider-block { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #444; }
+        .vod-provider-block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .vod-provider-block label { display: block; margin-bottom: 5px; cursor: pointer; }
+        .vod-provider-block input[type="text"] { width: 100%; background: #121212; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 4px; margin-top: 5px; box-sizing: border-box; }
+        .vod-provider-block small { color: #888; font-size: 11px; }
+        
+        .hidden-template { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Web Player Generator by dierose</h1>
+    <p>Lade hier deine <b>M3U-Dateien</b> und die dazugehörigen <b>TXT-Dateien</b> hoch. Die fertige <b>index.html</b> wird dir direkt zum Download angeboten.</p>
+    
+    <button class="btn" id="fileSelectBtn">📅 M3U und TXT auswählen</button>
+    <input type="file" id="fileInput" multiple accept=".m3u,.m3u8,.txt" style="display: none;">
+    
+    <div id="dropText">Noch keine Dateien ausgewählt.</div>
+
+    <div id="vodConfigContainer"></div>
+
+    <button class="btn" id="generateBtn" disabled>index.html generieren</button>
+
+    <div id="logArea"></div>
+</div>
+
+<!-- HTML GERÜST DES PLAYERS -->
+<textarea id="playerHtmlTemplate" class="hidden-template">
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest/dist/mpegts.js"></script>
+    <style>
+        body { background-color: #121212; color: #fff; font-family: Arial, sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+        h3 { margin: 0 0 10px 0; color: #4caf50; font-size: 16px; }
+        .header { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .btn { background-color: #333; color: #fff; border: 1px solid #555; padding: 12px 18px; border-radius: 6px; cursor: pointer; font-size: 16px; text-align: center; -webkit-appearance: none; appearance: none; }
+        .btn:hover { background-color: #444; }
+        .hidden { display: none !important; }
+        .btn-danger { background-color: #d32f2f; border-color: #b71c1c; }
+        .btn-warning { background-color: #f57c00; border-color: #ef6c00; }
+        .btn-vlc { background-color: #1e88e5; border-color: #1565c0; color: #fff; }
+        .btn-copy { background-color: #607d8b; border-color: #455a64; color: #fff; }
+        select { background-color: #333; color: #fff; border: 1px solid #555; padding: 12px; border-radius: 6px; font-size: 16px; }
+        .main-layout { display: flex; gap: 15px; flex: 1; min-height: 0; }
+        .column { background: #1e1e1e; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; min-width: 0; }
+        .col-providers { flex: 0 0 130px; }
+        .col-genres { flex: 0 0 180px; }
+        .col-media { flex: 1.2; min-width: 150px; }
+        .col-seasons { flex: 0 0 100px; display: none; }
+        .col-episodes { flex: 0 0 150px; display: none; }
+        .col-video { flex: 1; min-width: 300px; }
+        .list-container { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 5px; -webkit-overflow-scrolling: touch; }
+        .list-item { background: #333; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 15px; word-break: break-word; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .list-item:hover { background: #555; }
+        .list-item.active { background: #0d6efd; border-color: #0d6efd; }
+        .list-item span { flex: 1; }
+        .info-icon { background: #1e88e5; color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; cursor: pointer; flex-shrink: 0; border: none; font-family: serif; font-style: italic; }
+        .info-icon:hover { background: #42a5f5; }
+        .media-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-shrink: 0; }
+        .media-controls { display: flex; gap: 5px; align-items: center; }
+        .media-controls input { background: #222; color: #fff; border: 1px solid #555; padding: 6px 10px; border-radius: 4px; width: 100%; font-size: 14px; }
+        .btn-tiny { padding: 6px 10px; font-size: 12px; background: #333; border: 1px solid #555; color: #fff; cursor: pointer; border-radius: 4px; white-space: nowrap; }
+        .btn-tiny:hover { background: #444; }
+        video { width: 100%; background: #000; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 8px; max-height: 45vh; flex-shrink: 0; }
+        .video-controls { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
+        .status { margin-top: 10px; font-weight: bold; color: #ffc107; min-height: 20px; font-size: 14px; flex-shrink: 0; }
+        .info { margin-top: 10px; font-size: 12px; color: #aaa; word-break: break-all; white-space: pre-wrap; flex-shrink: 0; }
+        .info a { color: #64b5f6; text-decoration: none; }
+        .info a:hover { text-decoration: underline; }
+        .cred-cache-box { background: #2a2a2a; padding: 10px; border-radius: 4px; border-left: 4px solid #4caf50; margin-bottom: 10px; font-size: 13px; flex-shrink: 0; }
+        .vlc-info-box { margin-top: 15px; padding: 10px; background: #1a237e; border-left: 4px solid #3f51b5; border-radius: 4px; font-size: 13px; color: #bbdefb; flex-shrink: 0; }
+        .log-container { background: #000; color: #0f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; overflow-y: auto; height: 150px; border: 1px solid #333; white-space: pre-wrap; flex-shrink: 0; }
+        .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; margin-top: 20px; flex-shrink: 0; }
+        .log-toggle { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #fff; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: #1e1e1e; padding: 20px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid #444; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .modal-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #4caf50; }
+        .modal-close { float: right; cursor: pointer; color: #aaa; font-size: 24px; line-height: 1; }
+        .modal-close:hover { color: #fff; }
+        .modal-meta { font-size: 13px; color: #2196f3; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 10px; }
+        .modal-meta span { background: #2a2a2a; padding: 4px 8px; border-radius: 4px; }
+        .modal-desc { font-size: 14px; line-height: 1.5; color: #ddd; }
+        .modal-loading { text-align: center; padding: 20px; color: #aaa; }
+        @media (max-width: 768px) {
+            .main-layout { flex-direction: column; }
+            .col-providers, .col-genres, .col-media, .col-seasons, .col-episodes, .col-video { flex: 1 1 auto; width: 100%; }
+            .col-video { order: -1; }
+            .list-container { max-height: 25vh; }
+            video { max-height: 30vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <select id="providerSelect">
+            <option value="">Anbieter wählen...</option>
+        </select>
+        <button id="exportCredBtn" class="btn hidden">Zugangs-Historie</button>
+        <div class="log-toggle" style="margin-left: auto;">
+            <input type="checkbox" id="logToggle">
+            <label for="logToggle">Logausgabe aktivieren</label>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="column col-genres">
+            <h3>Genres</h3>
+            <div id="genreList" class="list-container"><div class="info">Bitte Anbieter wählen.</div></div>
+        </div>
+        <div class="column col-media">
+            <div class="media-header">
+                <h3 id="mediaHeader" style="margin:0;">Sender</h3>
+                <div id="mediaControls" class="media-controls hidden">
+                    <input type="text" id="searchInput" placeholder="Suchen...">
+                    <button class="btn-tiny" id="sortBtn">A-Z ⇄</button>
+                </div>
+            </div>
+            <div id="streamList" class="list-container"><div class="info">Wähle ein Genre...</div></div>
+        </div>
+        <div class="column col-seasons" id="colSeasons">
+            <h3>Staffeln</h3>
+            <div id="seasonList" class="list-container"><div class="info">Wähle Serie...</div></div>
+        </div>
+        <div class="column col-episodes" id="colEpisodes">
+            <h3>Episoden</h3>
+            <div id="episodeList" class="list-container"><div class="info">Wähle Staffel...</div></div>
+        </div>
+        <div class="column col-video">
+            <h3>Wiedergabe</h3>
+            <div id="credCacheBox" class="cred-cache-box hidden">
+                Aktiver Zugang: <span id="currentCredText" style="font-weight:bold; color:#fff;">-</span><br>
+                <span style="font-size:11px; color:#888;">(Wird beibehalten, bis er manuell gewechselt wird)</span>
+            </div>
+            <video id="videoElement" controls autoplay muted playsinline webkit-playsinline></video>
+            <div class="video-controls">
+                <button class="btn btn-danger" id="stopBtn">Stream stoppen</button>
+                <button id="changeCredBtn" class="btn btn-warning hidden">Zugang wechseln</button>
+                <button id="openVlcBtn" class="btn btn-vlc hidden">In VLC öffnen</button>
+                <button id="copyLinkBtn" class="btn btn-copy hidden">Link kopieren</button>
+            </div>
+            <div id="statusMsg" class="status">Bereit.</div>
+            <div id="streamInfo" class="info"></div>
+            <div class="vlc-info-box">💡 <b>Tipp:</b> Falls der Browser das Video oder den Ton nicht abspielen kann, kannst du den Stream per installiertem VLC öffnen.</div>
+            <div class="log-header">
+                <h3>System Log</h3>
+            </div>
+            <div id="logArea" class="log-container" style="display: none;">Log deaktiviert...</div>
+        </div>
+    </div>
+
+    <div id="modalOverlay" class="modal-overlay">
+        <div class="modal-box" id="modalBox">
+            <div class="modal-title"><span id="modalTitle">Info</span> <span class="modal-close" id="modalCloseBtn">&times;</span></div>
+            <div id="modalMeta" class="modal-meta"></div>
+            <div id="modalDesc" class="modal-desc">Lade Daten...</div>
+        </div>
+    </div>
+
+    <script>
+        window.PROVIDER_DATA = /*__DATA_PLACEHOLDER__*/;
+    </script>
+    <script>
+        /*__JS_PLACEHOLDER__*/
+    </script>
+</body>
+</html>
+</textarea>
+
+<!-- JAVASCRIPT LOGIK DES PLAYERS (Wird verschlüsselt) -->
+<textarea id="playerJsTemplate" class="hidden-template">
+const embeddedProviders = window.PROVIDER_DATA || {};
+let player = null;
+let parsedChannels = {}; 
+let credentials = []; 
+let baseUrl = "";
+let currentProviderName = "";
+let currentProviderType = "";
+let currentStreamId = null;
+let currentStreamName = null;
+let activeCred = null;
+let currentFinalUrl = ""; 
+let vodProviders = []; 
+
+let credRetries = 0;
+const MAX_CRED_RETRIES = 5; 
+let failedCreds = []; 
+let loggingEnabled = false;
+let isStopping = false;
+let isStarting = false;
+let vodCache = {};
+
+let isSortedAZ = false;
+let rawMediaList = []; 
+
+function toggleLog() {
+    loggingEnabled = document.getElementById('logToggle').checked;
+    document.getElementById('logArea').style.display = loggingEnabled ? 'block' : 'none';
+    if(loggingEnabled) log("Log aktiviert.");
+}
+
+function log(msg) {
+    if (!loggingEnabled) return;
+    const logArea = document.getElementById('logArea');
+    const time = new Date().toLocaleTimeString();
+    logArea.innerHTML += `[${time}] ${msg}\n`;
+    logArea.scrollTop = logArea.scrollHeight;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    // BRANDINGS UBERSCHRIFT WIRD IN DEN HEADER EINGEFÜGT (verschüsselt)
+    const header = document.querySelector('.header');
+    if (header) {
+        const branding = document.createElement('span');
+        branding.innerText = 'html Webplayer by dierose';
+        // Flexbox margin auto sorgt dafür, dass es mittig zwischen den Buttons und dem Log-Schalter sitzt
+        branding.style.cssText = 'margin-left: auto; margin-right: auto; color: #4caf50; font-weight: bold; font-size: 16px; text-align: center;';
+        
+        // Füge es vor dem Log-Schalter ein, damit dieser rechts bleibt
+        const logToggle = document.querySelector('.log-toggle');
+        if (logToggle) {
+            logToggle.style.marginLeft = '0'; // Überschreibt das margin-left: auto vom HTML, da das Branding es jetzt übernimmt
+            header.insertBefore(branding, logToggle);
+        } else {
+            header.appendChild(branding);
+        }
+    }
+
+    const select = document.getElementById('providerSelect');
+    Object.keys(embeddedProviders).sort((a, b) => {
+        if (a === 'Filme' || a === 'Serien') return 1;
+        if (b === 'Filme' || b === 'Serien') return -1;
+        return a.localeCompare(b);
+    }).forEach(name => {
+        let option = document.createElement('option');
+        option.value = name;
+        option.innerText = name;
+        select.appendChild(option);
+    });
+
+    select.addEventListener('change', () => loadProviderData(select.value));
+    document.getElementById('logToggle').addEventListener('change', toggleLog);
+    document.getElementById('searchInput').addEventListener('input', renderMediaList);
+    document.getElementById('sortBtn').addEventListener('click', toggleSortAZ);
+    document.getElementById('stopBtn').addEventListener('click', stopPlayback);
+    document.getElementById('changeCredBtn').addEventListener('click', () => changeCredAndReload());
+    document.getElementById('openVlcBtn').addEventListener('click', openInVlc);
+    document.getElementById('copyLinkBtn').addEventListener('click', copyStreamUrl);
+    document.getElementById('exportCredBtn').addEventListener('click', exportCredHistory);
+    document.getElementById('modalOverlay').addEventListener('click', closeModal);
+    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+    document.getElementById('modalBox').addEventListener('click', (e) => e.stopPropagation());
+});
+
+function resetColumns() {
+    document.getElementById('colSeasons').style.display = 'none';
+    document.getElementById('colEpisodes').style.display = 'none';
+    document.getElementById('mediaControls').classList.add('hidden');
+    document.getElementById('searchInput').value = '';
+    document.getElementById('mediaHeader').innerText = "Sender";
+    rawMediaList = [];
+}
+
+function loadProviderData(providerName) {
+    if (!providerName || !embeddedProviders[providerName]) return;
+    currentProviderName = providerName;
+    currentProviderType = embeddedProviders[providerName].type;
+    
+    failedCreds = []; 
+    document.getElementById('statusMsg').innerText = `Lade ${providerName}...`;
+    log(`Wechsle zu Anbieter: ${providerName} (Typ: ${currentProviderType})`);
+    
+    try {
+        if (currentProviderType !== 'Filme' && currentProviderType !== 'Serien') {
+            baseUrl = embeddedProviders[providerName].base_url;
+            credentials = embeddedProviders[providerName].credentials;
+        }
+        
+        if (credentials.length > 0 || currentProviderType === 'Filme' || currentProviderType === 'Serien') {
+            
+            if (credentials.length > 0) {
+                activeCred = getOrGenerateCred(currentProviderName);
+                log(`Aktiver Zugang gesetzt: ${formatCred(activeCred)}`);
+                document.getElementById('credCacheBox').classList.remove('hidden');
+                document.getElementById('currentCredText').innerText = formatCred(activeCred);
+                document.getElementById('changeCredBtn').classList.remove('hidden');
+                document.getElementById('exportCredBtn').classList.remove('hidden');
+            } else {
+                document.getElementById('credCacheBox').classList.add('hidden');
+                document.getElementById('changeCredBtn').classList.add('hidden');
+            }
+            
+            resetColumns();
+
+            if (currentProviderType === 'Filme' || currentProviderType === 'Serien') {
+                vodProviders = embeddedProviders[providerName].providers || []; 
+                
+                if (currentProviderType === 'Serien') {
+                    document.getElementById('colSeasons').style.display = 'flex';
+                    document.getElementById('colEpisodes').style.display = 'flex';
+                }
+                document.getElementById('mediaHeader').innerText = currentProviderType;
+                document.getElementById('mediaControls').classList.remove('hidden');
+                document.getElementById('statusMsg').innerText = `Lade ${currentProviderType}-Kategorien...`;
+                document.getElementById('genreList').innerHTML = '<div class="info">Lade Kategorien...</div>';
+                document.getElementById('streamList').innerHTML = '<div class="info">Wähle ein Genre...</div>';
+                
+                if (currentProviderType === 'Filme') loadAllMovieCategories();
+                if (currentProviderType === 'Serien') loadAllSeriesCategories();
+                return;
+            }
+            
+            document.getElementById('mediaHeader').innerText = "Sender";
+            document.getElementById('mediaControls').classList.remove('hidden');
+            document.getElementById('statusMsg').innerText = `Anbieter geladen. (${credentials.length} Zugänge)`;
+        } else {
+            document.getElementById('statusMsg').innerText = `Anbieter geladen. (Achtung: Keine Zugänge gefunden!)`;
+        }
+        parsedChannels = parseM3U(embeddedProviders[providerName].m3u_data, currentProviderType);
+        renderGenres();
+    } catch (error) {
+        document.getElementById('statusMsg').innerText = `Fehler: ${error.message}`;
+        log(`FEHLER beim Laden: ${error.message}`);
+    }
+}
+
+function toggleSortAZ() {
+    isSortedAZ = !isSortedAZ;
+    document.getElementById('sortBtn').innerText = isSortedAZ ? "Standard ⇄" : "A-Z ⇄";
+    renderMediaList();
+}
+
+function renderMediaList() {
+    const container = document.getElementById('streamList');
+    container.innerHTML = '';
+    
+    if (!rawMediaList || rawMediaList.length === 0) {
+        container.innerHTML = '<div class="info">Keine Einträge gefunden.</div>';
+        return;
+    }
+
+    let list = [...rawMediaList]; 
+    let searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+    if (searchTerm) {
+        list = list.filter(item => item.name.toLowerCase().includes(searchTerm));
+    }
+
+    if (isSortedAZ) {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    if (list.length === 0) {
+        container.innerHTML = '<div class="info">Keine Treffer.</div>';
+        return;
+    }
+
+    list.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        
+        const span = document.createElement('span');
+        span.innerText = item.name;
+        span.onclick = () => item.onClick(item.raw_data, item.name, div);
+        
+        div.appendChild(span);
+
+        if (currentProviderType === 'Filme' || currentProviderType === 'Serien') {
+            const infoBtn = document.createElement('button');
+            infoBtn.className = 'info-icon';
+            infoBtn.innerText = 'i';
+            infoBtn.onclick = (e) => {
+                e.stopPropagation();
+                showInfoModal(item.raw_data, item.name);
+            };
+            div.appendChild(infoBtn);
+        }
+        
+        container.appendChild(div);
+    });
+}
+
+async function showInfoModal(raw_id, name) {
+    const modal = document.getElementById('modalOverlay');
+    const titleEl = document.getElementById('modalTitle');
+    const metaEl = document.getElementById('modalMeta');
+    const descEl = document.getElementById('modalDesc');
+    
+    titleEl.innerText = name;
+    metaEl.innerHTML = '';
+    descEl.innerHTML = '<div class="modal-loading">Lade Beschreibung...</div>';
+    modal.classList.add('active');
+
+    try {
+        const cleanId = String(raw_id).split('.')[0];
+        const cacheKey = `${currentProviderName}_info_${cleanId}`;
+        
+        let data = vodCache[cacheKey];
+        
+        if (!data) {
+            const action = currentProviderType === 'Filme' ? 'get_vod_info&vod_id=' : 'get_series_info&series_id=';
+            const url = `${baseUrl}/player_api.php?username=${activeCred.user}&password=${activeCred.pass}&action=${action}${cleanId}`;
+            log(`API Request (Info): ${url}`);
+            const res = await fetch(url);
+            data = await res.json();
+            vodCache[cacheKey] = data;
+        }
+
+        const info = data.info || {};
+        
+        let metaHtml = '';
+        if (info.duration) {
+            let mins = Math.round(parseInt(info.duration) / 60);
+            if (!isNaN(mins) && mins > 0) metaHtml += `<span>⏱️ Dauer: ${mins} Min</span>`;
+        }
+        if (info.genre) metaHtml += `<span>🎬 ${info.genre}</span>`;
+        if (info.releasedate) {
+            let year = String(info.releasedate).substring(0, 4);
+            metaHtml += `<span>📅 Jahr: ${year}</span>`;
+        }
+        if (info.rating) metaHtml += `<span>⭐ ${info.rating}</span>`;
+        
+        let sizeBytes = 0;
+        if (data.movie_data && data.movie_data.size) {
+            sizeBytes = parseInt(data.movie_data.size);
+        } else if (info.size) {
+            sizeBytes = parseInt(info.size);
+        }
+        if (!isNaN(sizeBytes) && sizeBytes > 0) {
+            let sizeMb = (sizeBytes / 1048576).toFixed(2);
+            metaHtml += `<span>💾 Größe: ${sizeMb} MB</span>`;
+        }
+
+        metaEl.innerHTML = metaHtml || '<span>Keine Metadaten</span>';
+        
+        let plot = info.plot || info.description || "Keine Beschreibung verfügbar.";
+        descEl.innerText = plot;
+        
+        let castHtml = '';
+        if (info.cast) castHtml += `<div style="margin-top: 15px; font-size: 13px; color: #aaa;"><b>Schauspieler:</b> ${info.cast}</div>`;
+        if (info.director) castHtml += `<div style="margin-top: 5px; font-size: 13px; color: #aaa;"><b>Regie:</b> ${info.director}</div>`;
+        
+        if (castHtml) {
+            descEl.innerHTML += castHtml;
+        }
+        
+    } catch (e) {
+        descEl.innerText = "Fehler beim Laden der Daten.";
+        log("FEHLER im Info Modal: " + e.message);
+    }
+}
+
+function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('active');
+}
+
+async function fetchXtreamData(action, catId) {
+    let url = `${baseUrl}/player_api.php?username=${activeCred.user}&password=${activeCred.pass}&action=${action}`;
+    if (catId) url += `&category_id=${catId}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+}
+
+async function loadAllMovieCategories() {
+    const container = document.getElementById('genreList');
+    container.innerHTML = '';
+    document.getElementById('streamList').innerHTML = '<div class="info">Wähle ein Genre...</div>';
+    
+    if (!vodProviders || vodProviders.length === 0) {
+        container.innerHTML = '<div class="info">Keine Xtream-Anbieter gefunden.</div>';
+        return;
+    }
+    
+    for (let i = 0; i < vodProviders.length; i++) {
+        const prov = vodProviders[i];
+        currentProviderName = prov.name;
+        baseUrl = prov.base_url;
+        credentials = prov.credentials;
+        activeCred = getOrGenerateCred(currentProviderName);
+        
+        if (i > 0) {
+            const sep = document.createElement('div');
+            sep.style = 'border-top: 1px solid #444; margin: 10px 0;';
+            container.appendChild(sep);
+        }
+        
+        const cacheKey = `${prov.name}_movie_cats`;
+        let cats = vodCache[cacheKey];
+        if (!cats) {
+            try {
+                const data = await fetchXtreamData('get_vod_categories');
+                const filters = prov.vod_filters || ["DE "];
+                cats = data.filter(cat => cat.category_name && filters.some(f => cat.category_name.toUpperCase().startsWith(f.toUpperCase())));
+                vodCache[cacheKey] = cats;
+            } catch (e) {
+                log(`Fehler beim Laden von ${prov.name}: ${e.message}`);
+                cats = [];
+                const errDiv = document.createElement('div');
+                errDiv.className = 'list-item';
+                errDiv.style = 'background: #d32f2f; cursor: default; opacity: 0.7; text-align: center;';
+                errDiv.innerHTML = `<span>⚠️ ${prov.name}: Fehler (geblockt?)</span>`;
+                container.appendChild(errDiv);
+                continue;
+            }
+        }
+        
+        cats.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `<span>${cat.category_name}</span>`;
+            div.onclick = () => selectMovieCategory(i, cat.category_id, cat.category_name, div);
+            container.appendChild(div);
+        });
+    }
+    
+    if (container.innerHTML === '') container.innerHTML = '<div class="info">Keine Kategorien gefunden.</div>';
+    
+    if (vodProviders.length > 0) {
+        const firstProv = vodProviders[0];
+        currentProviderName = firstProv.name;
+        baseUrl = firstProv.base_url;
+        credentials = firstProv.credentials;
+        activeCred = getOrGenerateCred(currentProviderName);
+        document.getElementById('credCacheBox').classList.remove('hidden');
+        document.getElementById('currentCredText').innerText = formatCred(activeCred);
+        document.getElementById('changeCredBtn').classList.remove('hidden');
+    }
+}
+
+async function selectMovieCategory(pIndex, catId, catName, element) {
+    document.querySelectorAll('#genreList .list-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    
+    const prov = vodProviders[pIndex];
+    currentProviderName = prov.name;
+    baseUrl = prov.base_url;
+    credentials = prov.credentials;
+    activeCred = getOrGenerateCred(currentProviderName);
+    
+    document.getElementById('credCacheBox').classList.remove('hidden');
+    document.getElementById('currentCredText').innerText = formatCred(activeCred);
+    
+    const cacheKey = `${currentProviderName}_movie_streams_${catId}`;
+    if (vodCache[cacheKey]) { setupMovieList(vodCache[cacheKey]); return; }
+    try {
+        const data = await fetchXtreamData('get_vod_streams', catId);
+        vodCache[cacheKey] = data;
+        setupMovieList(data);
+    } catch (e) { /* Error handling */ }
+}
+
+function setupMovieList(movies) {
+    document.getElementById('mediaHeader').innerText = `Filme (${movies.length})`;
+    rawMediaList = movies.map(m => ({
+        name: m.name,
+        raw_data: `${m.stream_id}.${m.container_extension || 'mp4'}`,
+        onClick: (streamId, name, el) => startPlayback(streamId, name, el)
+    }));
+    document.getElementById('searchInput').value = '';
+    isSortedAZ = false;
+    document.getElementById('sortBtn').innerText = "A-Z ⇄";
+    renderMediaList();
+}
+
+async function loadAllSeriesCategories() {
+    const container = document.getElementById('genreList');
+    container.innerHTML = '';
+    document.getElementById('streamList').innerHTML = '<div class="info">Wähle ein Genre...</div>';
+    document.getElementById('seasonList').innerHTML = '<div class="info">Wähle Serie...</div>';
+    document.getElementById('episodeList').innerHTML = '<div class="info">Wähle Staffel...</div>';
+    
+    if (!vodProviders || vodProviders.length === 0) {
+        container.innerHTML = '<div class="info">Keine Xtream-Anbieter gefunden.</div>';
+        return;
+    }
+    
+    for (let i = 0; i < vodProviders.length; i++) {
+        const prov = vodProviders[i];
+        currentProviderName = prov.name;
+        baseUrl = prov.base_url;
+        credentials = prov.credentials;
+        activeCred = getOrGenerateCred(currentProviderName);
+        
+        if (i > 0) {
+            const sep = document.createElement('div');
+            sep.style = 'border-top: 1px solid #444; margin: 10px 0.';
+            container.appendChild(sep);
+        }
+        
+        const cacheKey = `${prov.name}_series_cats`;
+        let cats = vodCache[cacheKey];
+        if (!cats) {
+            try {
+                const data = await fetchXtreamData('get_series_categories');
+                const filters = prov.vod_filters || ["DE "];
+                cats = data.filter(cat => cat.category_name && filters.some(f => cat.category_name.toUpperCase().startsWith(f.toUpperCase())));
+                vodCache[cacheKey] = cats;
+            } catch (e) {
+                log(`Fehler beim Laden von ${prov.name}: ${e.message}`);
+                cats = [];
+                const errDiv = document.createElement('div');
+                errDiv.className = 'list-item';
+                errDiv.style = 'background: #d32f2f; cursor: default; opacity: 0.7; text-align: center;';
+                errDiv.innerHTML = `<span>⚠️ ${prov.name}: Fehler (geblockt?)</span>`;
+                container.appendChild(errDiv);
+                continue;
+            }
+        }
+        
+        cats.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `<span>${cat.category_name}</span>`;
+            div.onclick = () => selectSeriesCategory(i, cat.category_id, cat.category_name, div);
+            container.appendChild(div);
+        });
+    }
+    
+    if (container.innerHTML === '') container.innerHTML = '<div class="info">Keine Kategorien gefunden.</div>';
+    
+    if (vodProviders.length > 0) {
+        const firstProv = vodProviders[0];
+        currentProviderName = firstProv.name;
+        baseUrl = firstProv.base_url;
+        credentials = firstProv.credentials;
+        activeCred = getOrGenerateCred(currentProviderName);
+        document.getElementById('credCacheBox').classList.remove('hidden');
+        document.getElementById('currentCredText').innerText = formatCred(activeCred);
+        document.getElementById('changeCredBtn').classList.remove('hidden');
+    }
+}
+
+async function selectSeriesCategory(pIndex, catId, catName, element) {
+    document.querySelectorAll('#genreList .list-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    
+    const prov = vodProviders[pIndex];
+    currentProviderName = prov.name;
+    baseUrl = prov.base_url;
+    credentials = prov.credentials;
+    activeCred = getOrGenerateCred(currentProviderName);
+    
+    document.getElementById('credCacheBox').classList.remove('hidden');
+    document.getElementById('currentCredText').innerText = formatCred(activeCred);
+    
+    const cacheKey = `${currentProviderName}_series_streams_${catId}`;
+    if (vodCache[cacheKey]) { setupSeriesList(vodCache[cacheKey]); return; }
+    try {
+        const data = await fetchXtreamData('get_series', catId);
+        vodCache[cacheKey] = data;
+        setupSeriesList(data);
+    } catch (e) { /* Error handling */ }
+}
+
+function setupSeriesList(series) {
+    document.getElementById('mediaHeader').innerText = `Serien (${series.length})`;
+    rawMediaList = series.map(s => ({
+        name: s.name,
+        raw_data: s.series_id,
+        onClick: (seriesId, name, el) => selectSeries(seriesId, name, el)
+    }));
+    document.getElementById('searchInput').value = '';
+    isSortedAZ = false;
+    document.getElementById('sortBtn').innerText = "A-Z ⇄";
+    renderMediaList();
+}
+
+async function selectSeries(seriesId, seriesName, element) {
+    document.querySelectorAll('#streamList .list-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    const cacheKey = `${currentProviderName}_series_info_${seriesId}`;
+    let data = vodCache[cacheKey];
+    if (!data) {
+        const url = `${baseUrl}/player_api.php?username=${activeCred.user}&password=${activeCred.pass}&action=get_series_info&series_id=${seriesId}`;
+        const response = await fetch(url);
+        data = await response.json();
+        vodCache[cacheKey] = data;
+    }
+    renderSeasons(data.seasons || [], data.episodes || {}, seriesName);
+}
+
+function renderSeasons(seasons, episodes, seriesName) {
+    const container = document.getElementById('seasonList');
+    container.innerHTML = '';
+    document.getElementById('episodeList').innerHTML = '<div class="info">Wähle Staffel...</div>';
+    if (seasons.length === 0) { container.innerHTML = '<div class="info">Keine Staffeln.</div>'; return; }
+    seasons.sort((a, b) => parseInt(a.season_number) - parseInt(b.season_number));
+    seasons.forEach(season => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        div.innerHTML = `<span>Staffel ${season.season_number}</span>`;
+        div.onclick = () => selectSeason(season.season_number, episodes[season.season_number], div);
+        container.appendChild(div);
+    });
+}
+
+function selectSeason(seasonNum, episodes, element) {
+    document.querySelectorAll('#seasonList .list-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    const container = document.getElementById('episodeList');
+    container.innerHTML = '';
+    if (!episodes || episodes.length === 0) { container.innerHTML = '<div class="info">Keine Episoden.</div>'; return; }
+    episodes.sort((a, b) => parseInt(a.episode_num) - parseInt(b.episode_num));
+    episodes.forEach(ep => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        
+        const span = document.createElement('span');
+        span.innerText = `Ep. ${ep.episode_num}: ${ep.title || ''}`;
+        span.onclick = () => startPlayback(`${ep.id}.${ep.container_extension || 'mp4'}`, `S${seasonNum}E${ep.episode_num} - ${ep.title || ''}`, div);
+        div.appendChild(span);
+
+        container.appendChild(div);
+    });
+}
+
+function formatCred(cred) {
+    if (!cred) return "-";
+    if (['xtream', 'Filme', 'Serien'].includes(currentProviderType)) return cred.user;
+    return cred; 
+}
+
+function isSameCred(c1, c2) {
+    if (!c1 || !c2) return false;
+    if (['xtream', 'Filme', 'Serien'].includes(currentProviderType)) return c1.user === c2.user;
+    return c1 === c2;
+}
+
+function isFailedCred(cred) { return failedCreds.some(fc => isSameCred(fc, cred)); }
+
+function getOrGenerateCred(provider) {
+    let storedCred = localStorage.getItem(`cred_cache_${provider}`);
+    if (storedCred) {
+        try {
+            let parsed = JSON.parse(storedCred);
+            if (credentials.some(c => isSameCred(c, parsed))) return parsed;
+        } catch(e) {}
+    }
+    return getRandomCred();
+}
+
+function getRandomCred() {
+    if (credentials.length === 0) return null;
+    let newCred = null;
+    let attempts = 0;
+    do {
+        newCred = credentials[Math.floor(Math.random() * credentials.length)];
+        attempts++;
+    } while ((isSameCred(newCred, activeCred) || isFailedCred(newCred)) && attempts < 20);
+    localStorage.setItem(`cred_cache_${currentProviderName}`, JSON.stringify(newCred));
+    addCredToHistory(currentProviderName, formatCred(newCred));
+    return newCred;
+}
+
+function changeCredAndReload(isAutoRetry = false) {
+    if (!credentials || credentials.length === 0) return;
+    let oldCred = activeCred;
+    if (isAutoRetry && activeCred) {
+        failedCreds.push(activeCred);
+        log(`Zugang ${formatCred(oldCred)} als gescheitert markiert.`);
+    }
+    let newCred = getRandomCred();
+    activeCred = newCred;
+    log(`Zugang rotiert: ${formatCred(oldCred)} -> ${formatCred(newCred)}`);
+    document.getElementById('currentCredText').innerText = formatCred(activeCred);
+    if(!isAutoRetry) document.getElementById('statusMsg').innerText = "Zugang gewechselt. Baue Stream neu auf...";
+    if (currentStreamId) startPlayback(currentStreamId, currentStreamName, null, true);
+}
+
+function addCredToHistory(provider, credStr) {
+    let history = JSON.parse(localStorage.getItem('cred_history') || '[]');
+    history.push({ provider: provider, cred: credStr, date: new Date().toLocaleString() });
+    localStorage.setItem('cred_history', JSON.stringify(history));
+}
+
+function exportCredHistory() {
+    let history = JSON.parse(localStorage.getItem('cred_history') || '[]');
+    if (history.length === 0) return alert("Noch keine Zugänge generiert.");
+    let text = "Anbieter, Zugang, Datum/Uhrzeit\n====================================\n";
+    history.forEach(entry => { text += `${entry.provider}, ${entry.cred}, ${entry.date}\n`; });
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'zugang_history.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function renderGenres() {
+    const container = document.getElementById('genreList');
+    container.innerHTML = '';
+    document.getElementById('streamList').innerHTML = '<div class="info">Wähle ein Genre...</div>';
+    Object.keys(parsedChannels).forEach(genre => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        div.innerHTML = `<span>${genre}</span>`;
+        div.onclick = () => selectGenre(genre, div);
+        container.appendChild(div);
+    });
+}
+
+function selectGenre(genre, element) {
+    document.querySelectorAll('#genreList .list-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    
+    const channels = parsedChannels[genre];
+    document.getElementById('mediaHeader').innerText = `Sender (${channels.length})`;
+    
+    rawMediaList = channels.map(ch => ({
+        name: ch.name,
+        raw_data: ch.streamId,
+        onClick: (streamId, name, el) => startPlayback(streamId, name, el)
+    }));
+    
+    document.getElementById('searchInput').value = '';
+    isSortedAZ = false;
+    document.getElementById('sortBtn').innerText = "A-Z ⇄";
+    renderMediaList();
+}
+
+function startPlayback(streamId, name, element, isAutoRetry = false) {
+    if (!streamId) return;
+    if (isStarting && !isAutoRetry) { log("Doppelklick erkannt, Start ignoriert."); return; }
+    isStarting = true;
+    currentStreamId = streamId; 
+    currentStreamName = name;
+    if(!isAutoRetry) { credRetries = 0; failedCreds = []; }
+    if(element) {
+        document.querySelectorAll('.list-item.active').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+    }
+    
+    let finalUrl;
+    let isVod = false;
+    if (currentProviderType === 'Filme') {
+        finalUrl = `${baseUrl}/movie/${activeCred.user}/${activeCred.pass}/${streamId}`;
+        isVod = true;
+    } else if (currentProviderType === 'Serien') {
+        finalUrl = `${baseUrl}/series/${activeCred.user}/${activeCred.pass}/${streamId}`;
+        isVod = true;
+    } else if (currentProviderType === 'xtream') {
+        finalUrl = streamId.replace("__X_USER__", activeCred.user).replace("__X_PASS__", activeCred.pass);
+        if (!finalUrl.match(/\.(ts|m3u8|m3u)$/i)) { finalUrl += '.ts'; }
+    } else {
+        finalUrl = `${baseUrl}/play/live.php?mac=${activeCred}&stream=${streamId}&extension=ts`;
+    }
+    
+    currentFinalUrl = finalUrl;
+    document.getElementById('streamInfo').innerHTML = `Titel: ${name}<br>URL: <a href="${finalUrl}" title="Rechtsklick -> Ziel speichern unter..." target="_blank" style="color: #64b5f6; text-decoration: none;">${finalUrl}</a>`;
+    document.getElementById('statusMsg').innerText = "Verbinde mit Stream...";
+    log(`Starte Playback für ${name} | URL: ${finalUrl}`);
+    
+    document.getElementById('openVlcBtn').classList.remove('hidden');
+    document.getElementById('copyLinkBtn').classList.remove('hidden');
+    
+    if (isVod) { playNativeVideo(finalUrl); } else { playMpegtsStream(finalUrl); }
+}
+
+function stopPlayback() {
+    isStopping = true;
+    isStarting = false;
+    if (player) { player.destroy(); player = null; log("Player gestoppt und zerstört."); }
+    const videoElement = document.getElementById('videoElement');
+    videoElement.removeAttribute('src'); 
+    videoElement.load();
+    currentStreamId = null; currentStreamName = null; currentFinalUrl = "";
+    document.querySelectorAll('.list-item.active').forEach(el => el.classList.remove('active'));
+    document.getElementById('statusMsg').innerText = "Gestoppt.";
+    document.getElementById('streamInfo').innerText = "";
+    document.getElementById('openVlcBtn').classList.add('hidden');
+    document.getElementById('copyLinkBtn').classList.add('hidden');
+    setTimeout(() => { isStopping = false; }, 200);
+}
+
+function openInVlc() {
+    if (!currentFinalUrl) return;
+    const urlToOpen = currentFinalUrl;
+    stopPlayback(); 
+    
+    const isWindows = navigator.platform.toUpperCase().indexOf('WIN') > -1;
+    if (isWindows) {
+        window.location.href = 'playvlc://' + encodeURIComponent(urlToOpen);
+    } else {
+        window.location.href = 'vlc://' + urlToOpen;
+    }
+}
+
+function copyStreamUrl() {
+    if (!currentFinalUrl) return;
+    const urlToCopy = currentFinalUrl;
+    stopPlayback();
+    
+    navigator.clipboard.writeText(urlToCopy).then(() => {
+        document.getElementById('statusMsg').innerText = "Stream gestoppt. Link in Zwischenablage kopiert!";
+    }).catch(err => {
+        const ta = document.createElement('textarea');
+        ta.value = urlToCopy;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); document.getElementById('statusMsg').innerText = "Stream gestoppt. Link kopiert!"; } catch (e) {}
+        document.body.removeChild(ta);
+    });
+}
+
+function playNativeVideo(url) {
+    const videoElement = document.getElementById('videoElement');
+    videoElement.volume = 0.5;
+    if (player) { player.destroy(); player = null; }
+    videoElement.src = url;
+    videoElement.load();
+    videoElement.onerror = function() {
+        let err = videoElement.error;
+        if (err) {
+            log(`Natives Video Error - Code: ${err.code}`);
+            if (err.code === MediaError.MEDIA_ERR_DECODE || err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+                document.getElementById('statusMsg').innerText = "Codec-Fehler: Browser kann Datei nicht abspielen.";
+            } else { document.getElementById('statusMsg').innerText = "Wiedergabefehler."; }
+        }
+    };
+    videoElement.play().then(() => { isStarting = false; }).catch(err => {
+        if(!isStopping && err.name !== 'AbortError') { document.getElementById('statusMsg').innerText = "Bitte auf das Video klicken, um zu starten."; }
+        isStarting = false;
+    });
+}
+
+function playMpegtsStream(url) {
+    const videoElement = document.getElementById('videoElement');
+    videoElement.volume = 0.5;
+    if (mpegts.getFeatureList().mseLivePlayback) {
+        if (player) player.destroy();
+        const isLive = currentProviderType !== 'Filme' && currentProviderType !== 'Serien';
+        player = mpegts.createPlayer({ type: 'mse', isLive: isLive, hasAudio: true, hasVideo: true, url: url }, {
+            enableWorker: true, enableStashBuffer: false, stashInitialSize: 128, autoCleanupSourceBuffer: true
+        });
+        player.attachMediaElement(videoElement); 
+        player.load();
+        player.on(mpegts.Events.ERROR, function(errorType, errorDetail, errorInfo) {
+            log(`MPEGTS ERROR - Type: ${errorType}, Detail: ${errorDetail}`);
+            if (errorType === mpegts.ErrorTypes.NETWORK_ERROR) {
+                if (credRetries < MAX_CRED_RETRIES) {
+                    credRetries++;
+                    isStarting = false;
+                    document.getElementById('statusMsg').innerText = `Netzwerkfehler. Rotiere Zugang... (Versuch ${credRetries}/${MAX_CRED_RETRIES})`;
+                    setTimeout(() => changeCredAndReload(true), 1500);
+                } else {
+                    document.getElementById('statusMsg').innerText = "Netzwerkfehler: Verbindung fehlgeschlagen.";
+                    stopPlayback();
+                }
+            } else if (errorType === mpegts.ErrorTypes.MEDIA_ERROR) {
+                document.getElementById('statusMsg').innerText = "Codec-Fehler: H.265 wird nicht unterstützt.";
+                stopPlayback();
+            } else {
+                document.getElementById('statusMsg').innerText = `Stream Fehler: ${errorDetail}`;
+                stopPlayback();
+            }
+        });
+        videoElement.onerror = function() {
+            let err = videoElement.error;
+            if (err) {
+                log(`VIDEO ELEMENT ERROR - Code: ${err.code}`);
+                if (err.code === MediaError.MEDIA_ERR_DECODE || err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+                    document.getElementById('statusMsg').innerText = "Codec-Fehler: H.265 wird nicht unterstützt.";
+                    stopPlayback();
+                }
+            }
+        };
+        videoElement.play().then(() => { isStarting = false; }).catch(err => {
+            if(!isStopping && err.name !== 'AbortError') { document.getElementById('statusMsg').innerText = "Bitte auf das Video klicken, um zu starten."; }
+            isStarting = false;
+        });
+    } else {
+        document.getElementById('statusMsg').innerText = "Browser unterstützt kein MSE. Versuche nativen Player...";
+        playNativeVideo(url);
+    }
+}
+
+function parseM3U(text, providerType) {
+    const lines = text.split('\n');
+    const channels = {};
+    let currentChannel = null;
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('#EXTINF')) {
+            const groupMatch = line.match(/group-title="([^"]+)"/);
+            const nameMatch = line.match(/,(.*)$/);
+            let group = groupMatch ? groupMatch[1] : "Sonstige";
+            let name = nameMatch ? nameMatch[1] : "Unbekannt";
+            currentChannel = { group, name, url: null, streamId: null };
+        } else if (line.startsWith('http') && currentChannel) {
+            currentChannel.url = line;
+            if (providerType === 'xtream') {
+                currentChannel.streamId = line; 
+            } else {
+                const idMatch = line.match(/_(\d+)/);
+                if (idMatch) currentChannel.streamId = idMatch[1];
+            }
+            if (!channels[currentChannel.group]) channels[currentChannel.group] = [];
+            channels[currentChannel.group].push(currentChannel);
+            currentChannel = null;
+        }
+    }
+    return channels;
+}
+</textarea>
+
+<script>
+function _0x588d(_0x255473,_0x286260){_0x255473=_0x255473-0x6b;const _0x2baaad=_0x2baa();let _0x588dc6=_0x2baaad[_0x255473];if(_0x588d['QiumPm']===undefined){var _0x53768c=function(_0xa5ccf7){const _0x5d49b8='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';let _0x1cee5e='',_0x153509='';for(let _0x1bb845=0x0,_0x5b2214,_0x4cacfc,_0x4d1fde=0x0;_0x4cacfc=_0xa5ccf7['charAt'](_0x4d1fde++);~_0x4cacfc&&(_0x5b2214=_0x1bb845%0x4?_0x5b2214*0x40+_0x4cacfc:_0x4cacfc,_0x1bb845++%0x4)?_0x1cee5e+=String['fromCharCode'](0xff&_0x5b2214>>(-0x2*_0x1bb845&0x6)):0x0){_0x4cacfc=_0x5d49b8['indexOf'](_0x4cacfc);}for(let _0x11fab5=0x0,_0x300793=_0x1cee5e['length'];_0x11fab5<_0x300793;_0x11fab5++){_0x153509+='%'+('00'+_0x1cee5e['charCodeAt'](_0x11fab5)['toString'](0x10))['slice'](-0x2);}return decodeURIComponent(_0x153509);};_0x588d['cjGtBT']=_0x53768c,_0x588d['QBFjJi']={},_0x588d['QiumPm']=!![];}const _0x31fb09=_0x2baaad[0x0];_0x588d['JuYYra']!==_0x31fb09&&(_0x588d['QBFjJi']={},_0x588d['JuYYra']=_0x31fb09);const _0x5583e7=_0x588d['QBFjJi'][_0x255473];return _0x5583e7===undefined?(_0x588dc6=_0x588d['cjGtBT'](_0x588dc6),_0x588d['QBFjJi'][_0x255473]=_0x588dc6):_0x588dc6=_0x5583e7,_0x588dc6;}const _0x2c6db6=_0x588d;(function(_0x2b7a31,_0x48ea49){const _0x564a1c=_0x588d,_0x12f4c4=_0x2b7a31();while(!![]){try{const _0x59aec7=-parseInt(_0x564a1c(0x96))/0x1+-parseInt(_0x564a1c(0xcb))/0x2*(-parseInt(_0x564a1c(0xbc))/0x3)+-parseInt(_0x564a1c(0x6f))/0x4*(-parseInt(_0x564a1c(0xbb))/0x5)+-parseInt(_0x564a1c(0xca))/0x6+-parseInt(_0x564a1c(0x6e))/0x7*(parseInt(_0x564a1c(0x93))/0x8)+-parseInt(_0x564a1c(0xaa))/0x9*(parseInt(_0x564a1c(0xb7))/0xa)+parseInt(_0x564a1c(0x77))/0xb*(parseInt(_0x564a1c(0xb0))/0xc);if(_0x59aec7===_0x48ea49)break;else _0x12f4c4['push'](_0x12f4c4['shift']());}catch(_0x19b09d){_0x12f4c4['push'](_0x12f4c4['shift']());}}}(_0x2baa,0xed08a));let uploadedFiles={},logArea=document[_0x2c6db6(0x86)]('logArea'),dropText=document[_0x2c6db6(0x86)]('dropText'),detectedProviders=[];document['getElementById']('fileSelectBtn')['addEventListener'](_0x2c6db6(0x9d),()=>document[_0x2c6db6(0x86)](_0x2c6db6(0xc6))['click']()),document[_0x2c6db6(0x86)]('fileInput')[_0x2c6db6(0xc5)](_0x2c6db6(0x7f),handleFiles);async function handleFiles(_0x153509){const _0x4f58f2=_0x2c6db6,_0x1bb845=_0x153509[_0x4f58f2(0x89)][_0x4f58f2(0x9a)];if(_0x1bb845['length']===0x0)return;uploadedFiles={'m3u':{},'txt':{}};let _0x5b2214=[];for(let _0x4cacfc of _0x1bb845){const _0x4d1fde=_0x4cacfc[_0x4f58f2(0xb5)][_0x4f58f2(0x8d)]();if(_0x4d1fde['endsWith'](_0x4f58f2(0x90))||_0x4d1fde[_0x4f58f2(0x8e)]('.m3u8'))uploadedFiles[_0x4f58f2(0xa4)][_0x4cacfc[_0x4f58f2(0xb5)]]=_0x4cacfc,_0x5b2214[_0x4f58f2(0x84)](_0x4cacfc[_0x4f58f2(0xb5)]);else _0x4d1fde['endsWith'](_0x4f58f2(0x7a))&&(uploadedFiles[_0x4f58f2(0xa5)][_0x4cacfc['name']]=_0x4cacfc,_0x5b2214['push'](_0x4cacfc['name']));}_0x5b2214[_0x4f58f2(0x83)]>0x0&&(dropText[_0x4f58f2(0xd0)]=_0x4f58f2(0xae)+_0x5b2214[_0x4f58f2(0xcd)]('\x0a'),await analyzeProviders());}function logMsg(_0x11fab5){const _0x338ba9=_0x2c6db6;logArea[_0x338ba9(0x7e)][_0x338ba9(0x85)]=_0x338ba9(0x87),logArea[_0x338ba9(0xb8)]+=_0x11fab5+'\x0a',logArea[_0x338ba9(0x73)]=logArea['scrollHeight'];}function readFileAsText(_0x300793){return new Promise((_0x2b1885,_0x38fa4f)=>{const _0x2809db=_0x588d,_0x3d08a1=new FileReader();_0x3d08a1[_0x2809db(0xac)]=_0xba77cf=>_0x2b1885(_0xba77cf[_0x2809db(0x89)][_0x2809db(0xa1)]),_0x3d08a1[_0x2809db(0xc9)]=_0x38fa4f,_0x3d08a1[_0x2809db(0x95)](_0x300793);});}function getProviderTypeFromM3u(_0x4c9aec){const _0x2d2279=_0x2c6db6;if(/\/(?:live|movie|series)\/[^\/]+\/[^\/]+\//['test'](_0x4c9aec)||/username=([^&\s]+).*?password=([^&\s]+)/[_0x2d2279(0x6d)](_0x4c9aec))return'xtream';return _0x2d2279(0x80);}function _0x2baa(){const _0x24a9f4=['Agv4ywrLy2LTywW','lNr4Da','Aw5KzxGUAhrTBcbNzw5LCMLLCMvU','ie1Hy3mU','r2vMDw5Kzw46ia','C3r5Bgu','y2HHBMDL','BwfJ','CMvTB3zLq2HPBgq','u3rHCNrLieDLBMvYAwvYDw5NlI4U','BgvUz3rO','ChvZAa','zgLZCgXHEq','z2v0rwXLBwvUDej5swq','yMXVy2S','iIbJAgvJA2vKpIakicaGicaGicaGicaGicaGicaGicaGicaGicaGidXIpG','DgfYz2v0','Aw5KzxGUAhrTBa','pc9Zy3jPChq+','vMvYyxjIzwL0zsbkyxzHu2nYAxb0lI4U','Dg9mB3DLCKnHC2u','zw5KC1DPDgG','lYPFx0Ptx1bmqunfse9mrevsx18QlW','lM0ZDq','igDLzNvUzgvUlG','z2v0t2jMDxnJyxrLzenVzgu','ogPkz1bPAq','z2vUzxjHDgvcDg4','CMvHzefZvgv4Da','mta3oda3m0nftujfBa','C3rHCNrZv2L0Aa','C2XPy2u','Ahr0Ca','zMLSzxm','DMfSDwu','4PQG77IpieTLAw5Lihr4DcbMW7XYia','y2XPy2S','ie0ZvsbeyxrLAsHLBIKSia','BwfW','CgXHEwvYshrTBfrLBxbSyxrL','CMvZDwX0','y2HLy2TLza','Dgv4Dc9ODg1S','Btn1','DhH0','x19yx1vtrvjFxW','x19yx1bbu1nFxW','Bwf0y2G','Dw5KzwzPBMvK','odC2mJu0ngnIzu1Lwq','DM9Kx2vUywjSzv8','B25SB2fK','yMfZzty0','qxvZz2v3W6rOBhq6cG','ifH0CMvHBs1ADwFdPg5Nzs4','mte4ogTdqu9zBW','rMLSBwu','4PQG77Ipie9IzNvZy2f0Aw9UigzLAgXNzxnJAgXHz2vUoIa','yMfZzv91CMW','C3rYAw5NAwz5','BMfTzq','DxnLCM5HBwu9','mtblEefptuO','Aw5Uzxjive1m','lYPFx0rbvefFueXbq0vit0XervjFxYOV','AhjLzG','nxrWDenisW','m1vdtMPdDa','pc9IpIaOrMLSBwuGjIbtzxjPzw4GywT0AxzPzxjLBIKkicaGicaGicaGicaGicaGicaGicaGicaGpc9SywjLBd4kicaGicaGicaGicaGicaGicaGicaGicaGphnTywXSpKDLBNjLluzPBhrLCIaOzhvYy2GGs29TBweGDhjLBM5LBIWGEI5clIaIreuGlcaOvNXersKIks4Gr2vSDgvUigBdVhiGrMLSBwuGjIbtzxjPzw46pc9ZBwfSBd4kicaGicaGicaGicaGicaGicaGicaGicaGpgLUChv0ihr5Cgu9iNrLEhqIigLKpsj2B2rFzMLSDgvYxW','yxbWzw5Kq2HPBgq','DhjPBq','igfSCYbgywXSyMfJAY4','pgGZihn0EwXLpsjTyxjNAw4TDg9WoJa7ignVBg9YoIm0y2fMnta7iJ7WN46SifH0CMvHBsbwt0qGs29UzMLNDxjHDgLVBJWVAdm+','DM9Kx2zPBhrLCL8','iIb2ywX1zt0IreuGiIbWBgfJzwHVBgrLCJ0IEI5clIbersaSicHwFerfksi+cIaGicaGicaGicaGicaGicaGicaGpc9KAxy+cIaGicaGicaGicaGicaGica','C3bSAxq','ywrKrxzLBNrmAxn0zw5LCG','zMLSzuLUChv0','zMLSDgvY','EhrYzwfT','B25LCNjVCG','ntC3odqYqu9nugjf','nde3nJaYAg5ODuzi','CMvWBgfJzq','AM9PBG','A2v5CW','tgvZzsbeyxrLBI4UlG','Aw5UzxjuzxH0','zg93BMXVywq','B2jMDxnJyxrL','vMvYyxjIzwL0zs4UlG','8j+oIsbgrvjusuCHierPzsbPBMrLEc5ODg1SihD1CMrLigHLCNvUDgvYz2vSywrLBI4','DgvZDa','mJe1odKXoxPitLvorG','ntC5mZKYngTXDuLsDq','DM9Kq29UzMLNq29UDgfPBMvY','u2vYAwvU','cIaGicaGicaGicaGicaGicaGicaGpgrPDIbJBgfZCZ0IDM9KlxbYB3zPzgvYlwjSB2nRiJ4kicaGicaGicaGicaGicaGicaGicaGicaGpgXHyMvSpGOGicaGicaGicaGicaGicaGicaGicaGicaGicaGpgLUChv0ihr5Cgu9iMnOzwnRyM94iIbPzd0IDM9Kx2vUywjSzv8','C2nYB2XSvg9W','yM9KEq','zgLZywjSzwq','Aw5JBhvKzxm','mtK2nJy5EejjsKrs','ig5Py2H0igDLzNvUzgvUlcbUDxr6zsa'];_0x2baa=function(){return _0x24a9f4;};return _0x2baa();}function extractOldCredsFromM3u(_0x4dc644){const _0x4c9267=_0x2c6db6;let _0x510a0b=_0x4dc644[_0x4c9267(0xa8)](/\/(?:live|movie|series)\/([^\/]+)\/([^\/]+)\//);if(_0x510a0b)return[_0x510a0b[0x1],_0x510a0b[0x2]];_0x510a0b=_0x4dc644['match'](/username=([^&\s]+).*?password=([^&\s]+)/);if(_0x510a0b)return[_0x510a0b[0x1],_0x510a0b[0x2]];return[null,null];}async function analyzeProviders(){const _0xbe04b1=_0x2c6db6,_0x40dcb8=document[_0xbe04b1(0x86)](_0xbe04b1(0x70));_0x40dcb8[_0xbe04b1(0xb8)]='<h3\x20style=\x22color:#aaa;\x20text-align:center;\x22>Analyse\x20läuft...</h3>',_0x40dcb8[_0xbe04b1(0x7e)][_0xbe04b1(0x85)]=_0xbe04b1(0x87),detectedProviders=[];let _0x4905d=Object[_0xbe04b1(0xce)](uploadedFiles[_0xbe04b1(0xa4)]),_0x1eca9a=_0xbe04b1(0xc1),_0x484ef2=![];for(let _0x30a42d of _0x4905d){let _0x37437f=_0x30a42d[_0xbe04b1(0xcc)](/\.m3u8?$/i,''),_0x1b6378=await readFileAsText(uploadedFiles[_0xbe04b1(0xa4)][_0x30a42d]);getProviderTypeFromM3u(_0x1b6378)===_0xbe04b1(0xc8)&&(_0x484ef2=!![],detectedProviders[_0xbe04b1(0x84)](_0x37437f[_0xbe04b1(0x8d)]()),_0x1eca9a+=_0xbe04b1(0x72)+_0x37437f['toLowerCase']()+_0xbe04b1(0x88)+_0x37437f+_0xbe04b1(0xbd)+_0x37437f[_0xbe04b1(0x8d)]()+_0xbe04b1(0xc3));}_0x484ef2?_0x40dcb8[_0xbe04b1(0xb8)]=_0x1eca9a:_0x40dcb8[_0xbe04b1(0xb8)]='<div\x20class=\x22info\x22\x20style=\x22text-align:center;\x22>Keine\x20Xtream-Anbieter\x20gefunden.\x20Nur\x20Live-TV\x20wird\x20generiert.</div>',document[_0xbe04b1(0x86)](_0xbe04b1(0x94))[_0xbe04b1(0x75)]=![];}document[_0x2c6db6(0x86)](_0x2c6db6(0x94))['addEventListener'](_0x2c6db6(0x9d),generateIndex);async function generateIndex(){const _0x5de06b=_0x2c6db6;logArea['innerHTML']='',logMsg(_0x5de06b(0x82)),document['getElementById'](_0x5de06b(0x94))['disabled']=!![],document[_0x5de06b(0x86)](_0x5de06b(0x94))[_0x5de06b(0xd0)]=_0x5de06b(0xcf);let _0x2c47eb={},_0x9d63da=Object[_0x5de06b(0xce)](uploadedFiles[_0x5de06b(0xa4)]),_0x401e4a=Object['keys'](uploadedFiles[_0x5de06b(0xa5)]);logMsg(_0x5de06b(0x7d)+_0x9d63da[_0x5de06b(0x83)]+_0x5de06b(0x9e)+_0x401e4a[_0x5de06b(0x83)]+'\x20TXT\x20Datei(en).');for(let _0x3eaa18 of _0x9d63da){let _0x26b3f8=_0x3eaa18[_0x5de06b(0xcc)](/\.m3u8?$/i,''),_0x15aab1=null,_0x40b133=_0x26b3f8['toLowerCase']();for(let _0x13d19e of _0x401e4a){let _0x44cbc4=_0x13d19e['toLowerCase']();if(_0x44cbc4['startsWith'](_0x40b133)&&_0x44cbc4[_0x5de06b(0x8e)]('.txt')){_0x15aab1=uploadedFiles[_0x5de06b(0xa5)][_0x13d19e];break;}}!_0x15aab1&&_0x401e4a['length']>0x0&&(_0x15aab1=uploadedFiles['txt'][_0x401e4a[0x0]],logMsg('ℹ️\x20Genauen\x20Namen\x20für\x20'+_0x3eaa18+_0x5de06b(0x78)+_0x401e4a[0x0]+_0x5de06b(0xc0)));if(!_0x15aab1){logMsg(_0x5de06b(0x9c)+_0x3eaa18+_0x5de06b(0x91));continue;}let _0x38d929=await readFileAsText(uploadedFiles[_0x5de06b(0xa4)][_0x3eaa18]),_0x4dad43=await readFileAsText(_0x15aab1),_0x11eb1b=getProviderTypeFromM3u(_0x38d929),_0xfbb218=_0x4dad43[_0x5de06b(0xc4)]('\x0a')['map'](_0x2ca858=>_0x2ca858['trim']())[_0x5de06b(0xc7)](_0x3e1a68=>_0x3e1a68[_0x5de06b(0x83)]>0x0),_0x3ffcb2=_0xfbb218[0x0]?_0xfbb218[0x0][_0x5de06b(0xcc)](/\/$/,''):'';if(!_0x3ffcb2||!_0x3ffcb2[_0x5de06b(0x97)](_0x5de06b(0x99))){let _0x58a05b=_0x38d929[_0x5de06b(0xa8)](/(https?:\/\/[^\/]+)/);_0x3ffcb2=_0x58a05b?_0x58a05b[0x1]:'';}if(_0x11eb1b==='mac'){let _0x2b168b=[],_0x170367=/([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/;for(let _0x18b52e of _0xfbb218){let _0x4f66e5=_0x18b52e[_0x5de06b(0xa8)](_0x170367);if(_0x4f66e5)_0x2b168b[_0x5de06b(0x84)](_0x4f66e5[0x0]);}_0x2c47eb[_0x26b3f8[_0x5de06b(0x8d)]()]={'type':_0x5de06b(0x80),'base_url':_0x3ffcb2,'credentials':_0x2b168b,'m3u_data':_0x38d929},logMsg('✅\x20'+_0x26b3f8+':\x20'+_0x2b168b[_0x5de06b(0x83)]+_0x5de06b(0x7c));}else{if(_0x11eb1b===_0x5de06b(0xc8)){let _0x1329ca=[];for(let _0xbb389f of _0xfbb218[_0x5de06b(0x98)](0x1)){if(_0xbb389f['includes']('get.php')||_0xbb389f['includes'](_0x5de06b(0xb6))){let _0x5403c9=_0xbb389f[_0x5de06b(0xa8)](/username=([^&\s]+)/),_0x5b2650=_0xbb389f[_0x5de06b(0xa8)](/password=([^&\s]+)/);if(_0x5403c9&&_0x5b2650)_0x1329ca[_0x5de06b(0x84)]({'user':_0x5403c9[0x1],'pass':_0x5b2650[0x1]});}else{if(_0xbb389f[_0x5de06b(0x76)]('\x20')&&!_0xbb389f[_0x5de06b(0x97)](_0x5de06b(0x99))){let _0x51f3df=_0xbb389f['split'](/\s+/);if(_0x51f3df[_0x5de06b(0x83)]>=0x2)_0x1329ca['push']({'user':_0x51f3df[0x0],'pass':_0x51f3df[0x1]});}}}if(_0x1329ca[_0x5de06b(0x83)]===0x0){let [_0x46d540,_0x3130fd]=extractOldCredsFromM3u(_0x38d929);if(_0x46d540&&_0x3130fd)_0x1329ca[_0x5de06b(0x84)]({'user':_0x46d540,'pass':_0x3130fd});}let [_0x50c728,_0x4e8575]=extractOldCredsFromM3u(_0x38d929);_0x50c728&&_0x4e8575&&(_0x38d929=_0x38d929[_0x5de06b(0xc4)]('\x0a')[_0x5de06b(0x9f)](_0x4e600a=>_0x4e600a[_0x5de06b(0x97)](_0x5de06b(0x99))?_0x4e600a[_0x5de06b(0xcc)](_0x50c728,_0x5de06b(0xa6))[_0x5de06b(0xcc)](_0x4e8575,_0x5de06b(0xa7)):_0x4e600a)['join']('\x0a')),_0x2c47eb[_0x26b3f8[_0x5de06b(0x8d)]()]={'type':_0x5de06b(0xc8),'base_url':_0x3ffcb2,'credentials':_0x1329ca,'m3u_data':_0x38d929},logMsg('✅\x20'+_0x26b3f8+':\x20'+_0x1329ca['length']+_0x5de06b(0xaf));}}}let _0x371eaa=[];for(let _0x53b536 in _0x2c47eb){if(_0x2c47eb[_0x53b536]['type']===_0x5de06b(0xc8)){let _0x452ab3=document[_0x5de06b(0x86)](_0x5de06b(0xab)+_0x53b536);if(_0x452ab3&&_0x452ab3[_0x5de06b(0xa2)]){let _0x54ec78=document['getElementById'](_0x5de06b(0xc2)+_0x53b536),_0xd7c761=_0x54ec78?_0x54ec78[_0x5de06b(0x9b)]:'DE\x20',_0x2f8cda=_0xd7c761[_0x5de06b(0xc4)](',')[_0x5de06b(0x9f)](_0x495e67=>_0x495e67[_0x5de06b(0xbf)]())[_0x5de06b(0xc7)](_0x283a04=>_0x283a04[_0x5de06b(0x83)]>0x0);if(_0x2f8cda['length']===0x0)_0x2f8cda=['DE\x20'];_0x371eaa[_0x5de06b(0x84)]({'name':_0x53b536,'base_url':_0x2c47eb[_0x53b536][_0x5de06b(0xb3)],'credentials':_0x2c47eb[_0x53b536]['credentials'],'vod_filters':_0x2f8cda});}}}_0x371eaa['length']>0x0&&(_0x2c47eb[_0x5de06b(0xb1)]={'type':'Filme','providers':_0x371eaa},_0x2c47eb[_0x5de06b(0x71)]={'type':_0x5de06b(0x71),'providers':_0x371eaa});logMsg(_0x5de06b(0x8c)),document[_0x5de06b(0x86)](_0x5de06b(0x94))[_0x5de06b(0xd0)]=_0x5de06b(0x6b),await new Promise(_0x4b7c28=>setTimeout(_0x4b7c28,0x32));let _0x58a6d0=document[_0x5de06b(0x86)](_0x5de06b(0xa0))['value'],_0x21a073=document[_0x5de06b(0x86)]('playerJsTemplate')[_0x5de06b(0x9b)],_0x2ff1d3='';try{typeof JavaScriptObfuscator!==_0x5de06b(0xa9)?_0x2ff1d3=JavaScriptObfuscator[_0x5de06b(0xd2)](_0x21a073,{'compact':!![],'identifierNamesGenerator':_0x5de06b(0x79),'stringArray':!![],'stringArrayEncoding':[_0x5de06b(0xad)],'stringArrayThreshold':0.75})[_0x5de06b(0x92)]():_0x2ff1d3=_0x21a073;}catch(_0x22ee67){logMsg(_0x5de06b(0xb2)+_0x22ee67['message']+'\x20-\x20Nutze\x20unverschlüsselten\x20JS.'),_0x2ff1d3=_0x21a073;}let _0x57fc32=_0x5de06b(0x8b),_0x330301=_0x5de06b(0x8b),_0x4da46e=JSON[_0x5de06b(0xb4)](_0x2c47eb,null,0x4);_0x4da46e=_0x4da46e[_0x5de06b(0xc4)](_0x57fc32)[_0x5de06b(0xcd)](_0x330301),_0x2ff1d3=_0x2ff1d3[_0x5de06b(0xc4)](_0x57fc32)[_0x5de06b(0xcd)](_0x330301);let _0x15baaa=_0x58a6d0[_0x5de06b(0xc4)](_0x5de06b(0xb9))[_0x5de06b(0xcd)](_0x4da46e)[_0x5de06b(0xc4)](_0x5de06b(0x8f))[_0x5de06b(0xcd)](_0x2ff1d3);const _0x1cfcb6=new Blob([_0x15baaa],{'type':_0x5de06b(0xa3)}),_0x1b9514=document['createElement']('a');_0x1b9514[_0x5de06b(0xba)]=URL['createObjectURL'](_0x1cfcb6),_0x1b9514[_0x5de06b(0xd1)]=_0x5de06b(0x8a),document['body'][_0x5de06b(0xbe)](_0x1b9514),_0x1b9514[_0x5de06b(0x9d)](),document[_0x5de06b(0x74)][_0x5de06b(0x81)](_0x1b9514),logMsg(_0x5de06b(0x6c)),document[_0x5de06b(0x86)](_0x5de06b(0x94))[_0x5de06b(0x75)]=![],document[_0x5de06b(0x86)](_0x5de06b(0x94))[_0x5de06b(0xd0)]=_0x5de06b(0x7b);}
+</script>
+
+</body>
+</html>
